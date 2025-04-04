@@ -1,13 +1,13 @@
 // routes/userRoutes.js
-const express = require("express");
+const express = require('express');
 const router = express.Router();
-const userController = require("../controllers/userController");
+const userController = require('../controllers/userController');
+const { verifyToken } = require('../middleware/auth');
+const { checkRole } = require('../middleware/roles');
 
-// Routes pour les utilisateurs
-router.post("/", userController.createUser);
-router.get("/", userController.getAllUsers);
-router.get("/:id", userController.getUserById);
-router.put("/:id", userController.updateUser);
-router.delete("/:id", userController.deleteUser);
+// Routes protégées pour Admin seulement
+router.get('/', verifyToken, checkRole(['admin']), userController.getAllUsers);
+router.put('/:id', verifyToken, checkRole(['admin']), userController.updateUser);
+router.delete('/:id', verifyToken, checkRole(['admin']), userController.deleteUser);
 
 module.exports = router;

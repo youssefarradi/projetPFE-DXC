@@ -1,24 +1,62 @@
 const jwt = require('jsonwebtoken');
+const mongoose = require('mongoose');
 const config = require('../config/auth');
 const User = require('../models/User');
 
-// Middleware pour vérifier le token JWT
 exports.verifyToken = async (req, res, next) => {
-    const token = req.headers['x-access-token'];
+    // 1. Extraction robuste du token
+    let token;
+    if (req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
+        token = req.headers.authorization.split(' ')[1];
+    }
+
+    console.log('Token extrait:', token); // Debug important
 
     if (!token) {
-        return res.status(403).json({ message: 'Aucun token fourni' });
+        return res.status(401).json({
+            success: false,
+            message: 'Token manquant dans les headers'
+        });
     }
 
     try {
+        // 2. Décodage vérifié
         const decoded = jwt.verify(token, config.secret);
-        req.userId = decoded.id;
+        console.log('ID décodé:', decoded.id); // Debug
 
-        const user = await User.findById(req.userId, { password: 0 });
-        if (!user) return res.status(404).json({ message: 'Utilisateur non trouvé' });
+        // 3. Validation MongoDB
+        if (!mongoose.Types.ObjectId.isValid(decoded.id)) {
+            return res.status(400).json({
+                success: false,
+                message: 'ID utilisateur invalide'
+            });
+        }
 
+        // 4. Récupération utilisateur
+        const user = await User.findById(decoded.id).select('-password').lean();
+        console.log('Utilisateur trouvé:', user ? 'OUI' : 'NON'); // Debug
+
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'Utilisateur non trouvé en base'
+            });
+        }
+
+        // 5. Attachement des données (méthode garantie)
+        req.user = { // Utilisation de req.user standard
+            ...user,
+            id: user._id // Standardisation de l'ID
+        };
+
+        console.log('Données attachées:', req.user); // Debug final
         next();
+
     } catch (error) {
-        return res.status(401).json({ message: 'Non autorisé' });
+        console.error('Erreur middleware:', error.message);
+        return res.status(401).json({
+            success: false,
+            message: 'Token invalide ou expiré'
+        });
     }
 };

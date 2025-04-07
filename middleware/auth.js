@@ -44,10 +44,12 @@ exports.verifyToken = async (req, res, next) => {
         }
 
         // 5. Attachement des données (méthode garantie)
-        req.user = { // Utilisation de req.user standard
+        req.user = {
             ...user,
-            id: user._id // Standardisation de l'ID
+            id: user._id
         };
+
+        req.userId = user._id; // ✅ Ajout nécessaire pour les middlewares comme checkRole
 
         console.log('Données attachées:', req.user); // Debug final
         next();

@@ -3,8 +3,9 @@ const User = require('../models/User');
 // Vérifie si l'utilisateur a le rôle requis
 exports.checkRole = (roles) => async (req, res, next) => {
     try {
-        const user = await User.findById(req.userId);
+        console.log("ID utilisateur :", req.userId); // debug ici
 
+        const user = await User.findById(req.userId);
         if (!user) {
             return res.status(404).json({ message: 'Utilisateur non trouvé' });
         }

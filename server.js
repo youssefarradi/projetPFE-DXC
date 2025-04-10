@@ -7,6 +7,7 @@ require('dotenv').config();
 // Import des routes
 const usersRouter = require("./routes/userRoutes");
 const authRouter = require("./routes/authRoutes");
+const documentsRouter = require("./routes/documentRoutes");
 
 const app = express();
 const PORT = process.env.PORT || 5001;
@@ -56,6 +57,7 @@ mongoose.connection.on('disconnected', () => {
 // Routes API
 app.use("/api/auth", authRouter);
 app.use("/api/users", usersRouter);
+app.use("/api/documents", documentsRouter);
 
 // Route de test serveur
 app.get('/api/health', (req, res) => {

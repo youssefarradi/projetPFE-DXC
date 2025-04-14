@@ -50,7 +50,8 @@ const documentSchema = new mongoose.Schema({
     originalName: {
         type: String,
         required: true
-    }
+    },
+    extractedContent: { type: String, default: '' }
 }, {
     timestamps: true,
     toJSON: { virtuals: true },

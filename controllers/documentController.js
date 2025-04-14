@@ -1,60 +1,81 @@
-const Document = require('../models/Document');
 const fs = require('fs');
 const path = require('path');
+const { fromPath } = require('pdf2pic');
+const Tesseract = require('tesseract.js');
+const Document = require('../models/Document');
 
 exports.uploadDocument = async (req, res) => {
     try {
-        console.log('📤 Tentative d\'upload...');
-        if (!req.file) {
-            console.log('❌ Aucun fichier reçu');
-            return res.status(400).json({
-                success: false,
-                message: 'Aucun fichier téléchargé'
+        if (!req.file) return res.status(400).json({ success: false, message: 'Aucun fichier' });
+
+        const ext = path.extname(req.file.originalname).toLowerCase();
+        let extractedContent = '';
+
+        if (ext === '.pdf') {
+            const outputPath = req.file.path.replace('.pdf', '');
+
+            // Conversion PDF en PNG avec pdf2pic
+            const convert = fromPath(req.file.path, { density: 300, saveFilename: 'page', savePath: './uploads/' });
+
+            convert(1).then(async (resolve) => {
+                const firstPage = resolve.path;
+
+                try {
+                    // Extraction du texte de l'image via OCR (Tesseract)
+                    const resultOCR = await Tesseract.recognize(firstPage, 'fra');
+                    extractedContent = resultOCR.data.text;
+
+                    // Supprime l'image après extraction
+                    fs.unlinkSync(firstPage);
+
+                    const { title, description, documentType, classification } = req.body;
+                    const document = new Document({
+                        title,
+                        description,
+                        documentType,
+                        owner: req.user.id,
+                        classification: classification || 'Private',
+                        filePath: req.file.path,
+                        fileType: ext.substring(1),
+                        fileSize: req.file.size,
+                        originalName: req.file.originalname,
+                        extractedContent
+                    });
+
+                    await document.save();
+                    res.status(201).json({ success: true, data: document });
+                } catch (ocrError) {
+                    console.error('Erreur OCR:', ocrError);
+                    return res.status(500).json({ success: false, message: 'Erreur OCR' });
+                }
+            }).catch((err) => {
+                console.error("Erreur lors de la conversion PDF en PNG:", err);
+                return res.status(500).json({ success: false, message: 'Erreur lors de la conversion PDF en PNG' });
             });
+        } else {
+            const result = await Tesseract.recognize(req.file.path, 'eng');
+            extractedContent = result.data.text;
+
+            const { title, description, documentType, classification } = req.body;
+            const document = new Document({
+                title,
+                description,
+                documentType,
+                owner: req.user.id,
+                classification: classification || 'Private',
+                filePath: req.file.path,
+                fileType: ext.substring(1),
+                fileSize: req.file.size,
+                originalName: req.file.originalname,
+                extractedContent
+            });
+
+            await document.save();
+            res.status(201).json({ success: true, data: document });
         }
-
-        console.log('✅ Fichier reçu :', req.file.originalname);
-        console.log('📄 Corps de la requête :', req.body);
-
-        const { title, description, documentType, classification } = req.body;
-
-        const document = new Document({
-            title,
-            description,
-            documentType,
-            owner: req.user.id,
-            classification: classification || 'Private',
-            filePath: req.file.path,
-            fileType: path.extname(req.file.originalname).substring(1),
-            fileSize: req.file.size,
-            originalName: req.file.originalname
-        });
-
-        await document.save();
-        console.log('✅ Document enregistré en base :', document._id);
-
-        res.status(201).json({
-            success: true,
-            data: {
-                id: document._id,
-                title: document.title,
-                fileType: document.fileType,
-                downloadUrl: `/api/documents/${document._id}/download`
-            }
-        });
-
-    } catch (error) {
-        console.error('❌ Erreur uploadDocument:', error.message);
-        if (req.file) {
-            console.log('🧹 Suppression du fichier suite à l\'erreur...');
-            fs.unlinkSync(req.file.path);
-        }
-
-        res.status(500).json({
-            success: false,
-            message: 'Erreur lors du téléchargement',
-            error: error.message
-        });
+    } catch (err) {
+        console.error('❌ Erreur OCR ou upload :', err.message);
+        res.status(500).json({ success: false, message: err.message });
     }
 };
 

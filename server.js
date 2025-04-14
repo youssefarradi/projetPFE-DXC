@@ -1,8 +1,13 @@
 const express = require("express");
-const mongoose = require("mongoose");
 const cors = require("cors");
+const dotenv = require("dotenv");
 const path = require("path");
-require('dotenv').config();
+
+// Chargement des variables d'environnement
+dotenv.config();
+
+// Connexion MongoDB (modularisée)
+const connectDB = require("./config/db");
 
 // Import des routes
 const usersRouter = require("./routes/userRoutes");
@@ -11,7 +16,6 @@ const documentsRouter = require("./routes/documentRoutes");
 
 const app = express();
 const PORT = process.env.PORT || 5001;
-const MONGO_URI = process.env.MONGO_URI || "mongodb://localhost:27017/user-management";
 
 // Configuration CORS
 const corsOptions = {
@@ -21,45 +25,20 @@ const corsOptions = {
     optionsSuccessStatus: 204
 };
 
-// Middleware
+// Middlewares
 app.use(cors(corsOptions));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Connexion à MongoDB (version simplifiée pour Mongoose 6+)
-mongoose.connect(MONGO_URI)
-    .then(() => {
-        console.log("✅ MongoDB connecté avec succès");
-
-        // Création des index (alternative moderne)
-        mongoose.connection.db.collection('users').createIndex({ email: 1 }, { unique: true })
-            .then(() => console.log("✔ Index email unique créé"))
-            .catch(err => console.error("❌ Erreur création index:", err));
-    })
-    .catch((err) => {
-        console.error("❌ Erreur de connexion MongoDB:", err.message);
-        process.exit(1);
-    });
-
-// Gestion des événements de connexion MongoDB
-mongoose.connection.on('connected', () => {
-    console.log('Mongoose connecté à la base de données');
-});
-
-mongoose.connection.on('error', (err) => {
-    console.error('Erreur de connexion Mongoose:', err);
-});
-
-mongoose.connection.on('disconnected', () => {
-    console.log('Mongoose déconnecté');
-});
+// Connexion à MongoDB
+connectDB();
 
 // Routes API
 app.use("/api/auth", authRouter);
 app.use("/api/users", usersRouter);
 app.use("/api/documents", documentsRouter);
 
-// Route de test serveur
+// Route de test
 app.get('/api/health', (req, res) => {
     res.status(200).json({
         status: 'healthy',
@@ -68,7 +47,7 @@ app.get('/api/health', (req, res) => {
     });
 });
 
-// Gestion des erreurs centralisée
+// Middleware d'erreur global
 app.use((err, req, res, next) => {
     console.error(err.stack);
     res.status(500).json({
@@ -78,7 +57,7 @@ app.use((err, req, res, next) => {
     });
 });
 
-// Gestion des routes non trouvées
+// Middleware pour les routes non trouvées
 app.use((req, res) => {
     res.status(404).json({
         success: false,
@@ -86,15 +65,16 @@ app.use((req, res) => {
     });
 });
 
-// Gestion propre de la fermeture
+// Gestion propre de la fermeture du serveur
 process.on('SIGINT', () => {
+    const mongoose = require("mongoose");
     mongoose.connection.close(() => {
-        console.log('Mongoose déconnecté suite à l\'arrêt de l\'application');
+        console.log("🔌 Mongoose déconnecté suite à l'arrêt de l'application");
         process.exit(0);
     });
 });
 
-// Lancer le serveur
+// Lancement du serveur
 const server = app.listen(PORT, () => {
     console.log(`🚀 Serveur en écoute sur le port ${PORT}`);
     console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
@@ -102,6 +82,6 @@ const server = app.listen(PORT, () => {
 
 // Gestion des erreurs non capturées
 process.on('unhandledRejection', (err) => {
-    console.error('Rejet non géré:', err);
+    console.error('🚨 Rejet non géré:', err);
     server.close(() => process.exit(1));
 });

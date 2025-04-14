@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { fromPath } = require('pdf2pic');
 const Tesseract = require('tesseract.js');
+const pdfParse = require('pdf-parse');
 const Document = require('../models/Document');
 
 exports.uploadDocument = async (req, res) => {
@@ -11,74 +12,72 @@ exports.uploadDocument = async (req, res) => {
         const ext = path.extname(req.file.originalname).toLowerCase();
         let extractedContent = '';
 
+        // === PDF ===
         if (ext === '.pdf') {
-            const outputPath = req.file.path.replace('.pdf', '');
+            const dataBuffer = fs.readFileSync(req.file.path);
+            const parsed = await pdfParse(dataBuffer);
 
-            // Conversion PDF en PNG avec pdf2pic
-            const convert = fromPath(req.file.path, { density: 300, saveFilename: 'page', savePath: './uploads/' });
+            if (parsed.text.trim().length > 20) {
+                console.log('✅ Texte détecté dans le PDF, extraction avec pdf-parse');
+                extractedContent = parsed.text;
+            } else {
+                console.log('⚠ Aucun texte détecté dans le PDF, OCR requis');
 
-            convert(1).then(async (resolve) => {
-                const firstPage = resolve.path;
+                // Convertir la 1ère page du PDF en image PNG
+                const convert = fromPath(req.file.path, {
+                    density: 200,
+                    saveFilename: 'page',
+                    savePath: './uploads/temp',
+                    format: 'png',
+                    width: 1200,
+                    height: 1600
+                });
 
-                try {
-                    // Extraction du texte de l'image via OCR (Tesseract)
-                    const resultOCR = await Tesseract.recognize(firstPage, 'fra');
-                    extractedContent = resultOCR.data.text;
+                const result = await convert(1); // page 1
+                const imagePath = result.path;
 
-                    // Supprime l'image après extraction
-                    fs.unlinkSync(firstPage);
+                const resultOCR = await Tesseract.recognize(imagePath, 'fra', {
+                    logger: m => console.log(m)
+                });
 
-                    const { title, description, documentType, classification } = req.body;
-                    const document = new Document({
-                        title,
-                        description,
-                        documentType,
-                        owner: req.user.id,
-                        classification: classification || 'Private',
-                        filePath: req.file.path,
-                        fileType: ext.substring(1),
-                        fileSize: req.file.size,
-                        originalName: req.file.originalname,
-                        extractedContent
-                    });
+                extractedContent = resultOCR.data.text;
+                fs.unlinkSync(imagePath); // Supprime l’image temporaire
+            }
 
-                    await document.save();
-                    res.status(201).json({ success: true, data: document });
-                } catch (ocrError) {
-                    console.error('Erreur OCR:', ocrError);
-                    return res.status(500).json({ success: false, message: 'Erreur OCR' });
-                }
-            }).catch((err) => {
-                console.error("Erreur lors de la conversion PDF en PNG:", err);
-                return res.status(500).json({ success: false, message: 'Erreur lors de la conversion PDF en PNG' });
-            });
-        } else {
-            const result = await Tesseract.recognize(req.file.path, 'eng');
+            // === Image (jpg, png, etc.) ===
+        } else if (['.png', '.jpg', '.jpeg'].includes(ext)) {
+            console.log('🖼 Image détectée, OCR en cours...');
+            const result = await Tesseract.recognize(req.file.path, 'fra');
             extractedContent = result.data.text;
-
-            const { title, description, documentType, classification } = req.body;
-            const document = new Document({
-                title,
-                description,
-                documentType,
-                owner: req.user.id,
-                classification: classification || 'Private',
-                filePath: req.file.path,
-                fileType: ext.substring(1),
-                fileSize: req.file.size,
-                originalName: req.file.originalname,
-                extractedContent
-            });
-
-            await document.save();
-            res.status(201).json({ success: true, data: document });
+        } else {
+            extractedContent = '❌ Format non pris en charge pour l\'extraction.';
         }
+
+        // Enregistrement en BDD
+        const { title, description, documentType, classification } = req.body;
+
+        const document = new Document({
+            title,
+            description,
+            documentType,
+            owner: req.user.id,
+            classification: classification || 'Private',
+            filePath: req.file.path,
+            fileType: ext.substring(1),
+            fileSize: req.file.size,
+            originalName: req.file.originalname,
+            extractedContent
+        });
+
+        await document.save();
+
+        res.status(201).json({ success: true, data: document });
+
     } catch (err) {
-        console.error('❌ Erreur OCR ou upload :', err.message);
+        console.error('❌ Erreur extraction :', err.message);
         res.status(500).json({ success: false, message: err.message });
     }
 };
-
 
 exports.downloadDocument = async (req, res) => {
     try {

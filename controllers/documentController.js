@@ -151,3 +151,28 @@ exports.getUserDocuments = async (req, res) => {
         });
     }
 };
+exports.getAllDocuments = async (req, res) => {
+    try {
+        console.log('📚 Liste de tous les documents');
+
+        const documents = await Document.find()
+            .select('-filePath -__v') // Exclut filePath et __v de la réponse
+            .sort('-uploadDate'); // Trie les documents par date de téléchargement décroissante
+
+        console.log(`✅ ${documents.length} documents trouvés`);
+
+        res.status(200).json({
+            success: true,
+            count: documents.length,
+            data: documents
+        });
+    } catch (error) {
+        console.error('❌ Erreur getAllDocuments:', error.message);
+        res.status(500).json({
+            success: false,
+            message: 'Erreur serveur',
+            error: error.message
+        });
+    }
+};
+

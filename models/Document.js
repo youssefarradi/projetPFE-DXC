@@ -15,11 +15,6 @@ const documentSchema = new mongoose.Schema({
     documentType: {
         type: String,
         required: true,
-        enum: {
-            values: ['Invoice', 'Contract', 'Report', 'Other'],
-            message: 'Type de document invalide'
-        },
-        default: 'Other'
     },
     owner: {
         type: mongoose.Schema.Types.ObjectId,

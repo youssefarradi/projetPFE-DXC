@@ -1,9 +1,40 @@
+const axios = require("axios"); // Pour appeler l'API du LLM
 const fs = require('fs');
 const path = require('path');
 const { fromPath } = require('pdf2pic');
 const Tesseract = require('tesseract.js');
 const pdfParse = require('pdf-parse');
 const Document = require('../models/Document');
+
+// Fonction pour appeler le LLM pour la classification
+const classifyWithLLM = async (extractedContent) => {
+    try {
+        const prompt = `
+        Voici le contenu OCR ou du PDF :
+
+        "${extractedContent}"
+
+        Quelle est la catégorie de ce document ? Choisissez parmi les options suivantes : Facture, Contrat, Rapport, Lettre, Autre.
+        Répondez uniquement par le nom de la catégorie.
+        `;
+
+        const response = await axios.post("https://api.groq.com/openai/v1/chat/completions", {
+            model: "llama3-70b-8192",
+            messages: [{ role: "user", content: prompt }],
+            temperature: 0.2
+        }, {
+            headers: {
+                Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
+                'Content-Type': 'application/json'
+            }
+        });
+
+        return response.data.choices[0].message.content.trim(); // Renvoie la catégorie
+    } catch (err) {
+        console.error('❌ Erreur LLM :', err.message);
+        return 'Autre'; // En cas d'erreur, on retourne 'Autre'
+    }
+};
 
 exports.uploadDocument = async (req, res) => {
     try {
@@ -53,13 +84,16 @@ exports.uploadDocument = async (req, res) => {
             extractedContent = '❌ Format non pris en charge pour l\'extraction.';
         }
 
+        // === 2. Classification avec LLM ===
+        const documentType = await classifyWithLLM(extractedContent);
+
         // Enregistrement en BDD
-        const { title, description, documentType, classification } = req.body;
+        const { title, description, classification } = req.body;
 
         const document = new Document({
             title,
             description,
-            documentType,
+            documentType, // Utilisation de la classification LLM
             owner: req.user.id,
             classification: classification || 'Private',
             filePath: req.file.path,
@@ -78,6 +112,7 @@ exports.uploadDocument = async (req, res) => {
         res.status(500).json({ success: false, message: err.message });
     }
 };
+
 
 exports.downloadDocument = async (req, res) => {
     try {

@@ -14,5 +14,7 @@ router.get('/:id/download', verifyToken, documentController.downloadDocument);
 // Liste des documents utilisateur
 router.get('/', verifyToken, documentController.getUserDocuments);
 router.get('/all', verifyToken, documentController.getAllDocuments);
+router.delete('/:id', verifyToken, documentController.deleteDocument);
+router.get('/search', verifyToken, documentController.searchDocuments);
 
 module.exports = router;
